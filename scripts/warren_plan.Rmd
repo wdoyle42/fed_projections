@@ -1,0 +1,188 @@
+---
+title: "The Warren Plan Would Penalize States with Lowest College Prices"
+author: "Will Doyle"
+date: "4/22/2019"
+output: md_document
+always_allow_html: yes
+---
+
+Senator Elizabeth Warren's [plan](https://medium.com/@teamwarren/im-calling-for-something-truly-transformational-universal-free-public-college-and-cancellation-of-a246cd0f910f) for college affordability involves a laudable commitment to ensuring college affordability for all. The plan calls for a massive expansion in the Pell Grant in order to cover living expenses, which is a really good idea. 
+
+I'm interested in thinking about the subsidy levels implied by the plan's commitment to free college. As written, the plan states "The federal government will partner with states to split the costs of tuition and fees and ensure that states maintain their current levels of funding on need-based financial aid and academic instruction." There's quite a bit in that statement, but I'm going to focus on the "split costs". I'm assuming this means that the federal government will pay for half of the stated tuition and fees at public colleges and universities-- both two-year and four-year. 
+
+I drew on data from the most recent Digest of Education Statistics for tuition and fees by state, available [here](https://nces.ed.gov/programs/digest/d17/tables/dt17_330.20.asp) for the year 2016. I assume that the per student subsidy in each state will end up being weighted by enrollment, so the overall state subsidies are weighted by FTE enrollment, available [here](https://nces.ed.gov/programs/digest/d17/tables/dt17_307.20.asp).
+
+
+```{r,echo=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning=FALSE, results ='hide',include=TRUE,message = FALSE)
+```
+
+
+```{r}
+library(knitr)
+library(tidyverse)
+library(readxl)
+library(htmlwidgets)
+```
+
+
+```{r}
+source("./plot_functions.R")
+```
+
+```{r}
+ddir<-"../data/"
+```
+
+```{r}
+tuit_names<-c("name",
+             "pub4_instate_total_2015",
+             "pub4_instate_tuition_fees_2015",
+             "pub4_instate_total_2016",
+             "pub4_instate_tuition_fees_2016",
+             "pub4_instate_tuition_room_2016",
+             "pub4_instate_tuition_board_2016",
+             "pub4_outstate_tuition_fees_2016",
+             "priv4_instate_total_2015",
+             "priv4_instate_tuition_fees_2015",
+             "priv4_instate_total_2016",
+             "priv4_instate_tuition_fees_2016",
+             "priv4_instate_tuition_room_2016",
+             "priv4_instate_tuition_board_2016",
+             "pub2_instate_tuition_fees_2015",
+             "pub2_instate_tuition_fees_2016",
+             "pub2_outstate_tuition_fees_2016")
+
+fte_names<-c("name",
+             "fte_pub4_2000",
+              "fte_pub4_2010",
+              "fte_pub4_2016",             
+              "fte_pub2_2000",
+              "fte_pub2_2010",
+              "fte_pub2_2016",             
+              "fte_priv4_2010",             
+              "fte_priv4_2016",
+              "fte_fp4_2010",             
+              "fte_fp4_2016",
+              "fte_fp2_2010",             
+              "fte_fp2_2016"
+             )
+
+```
+
+
+```{r}
+
+if(file.exists(paste0(ddir,"tuit.Rds"))==FALSE){
+  
+## Tuition  
+  
+url<-"https://nces.ed.gov/programs/digest/d17/tables/xls/tabn330.20.xls"
+download.file(url,destfile=paste0(ddir,"tuit.xls"))
+tuit<-read_xls(paste0(ddir,"tuit.xls"),skip=7,col_names = FALSE,col_types = c("text",rep("numeric",16)))
+names(tuit)<-tuit_names
+
+tuit<-tuit%>%
+  filter((is.na(name)==FALSE))%>%
+  mutate(name=str_replace_all(name,"[.]" ,""))%>% ##Thanks, NCES!
+  mutate(name=str_sub(name,1,-2))%>% ## Trailing whitespace
+  slice(1:51)
+
+## FTE Enrollment
+
+
+url<-"https://nces.ed.gov/programs/digest/d17/tables/xls/tabn307.20.xls"
+download.file(url,destfile=paste0(ddir,"fte.xls"))
+fte<-read_xls(paste0(ddir,"fte.xls"),skip=6,col_names = FALSE,col_types=c("text",rep("numeric",12)))
+names(fte)<-fte_names
+
+fte<-fte%>%
+  filter((is.na(name)==FALSE))%>%
+  mutate(name=str_replace_all(name,"[.]" ,""))%>% ##Thanks, NCES!
+  mutate(name=str_sub(name,1,-2))%>% ## Trailing whitespace
+  slice(1:51)
+
+tuit<-left_join(tuit,fte,by="name")
+
+save(tuit,file=paste0(ddir,"tuit.Rds"))
+
+data(states)
+
+states<-states%>%
+  select(state,name)
+
+tuit<-left_join(tuit,states,by="name")
+
+} else{
+load(paste0(ddir,"tuit.Rds"))
+}
+```
+
+
+## Subsidy level by state
+```{r}
+
+
+tuit<-tuit%>%
+  mutate(pub2_instate_tuition_fees_2016=
+           ifelse(name=="Delaware",pub2_instate_tuition_fees_2015,pub2_instate_tuition_fees_2016))%>%
+  mutate(pub2_instate_tuition_fees_2016=replace_na(pub2_instate_tuition_fees_2016,0))%>%
+  mutate(total_pub=fte_pub4_2016+fte_pub2_2016)%>%
+  mutate(prop_pub4=fte_pub4_2016/total_pub)%>%
+  mutate(prop_pub2=fte_pub2_2016/total_pub)%>%
+  mutate(Subsidy=
+    ((pub4_instate_tuition_fees_2016/2)*prop_pub4)+
+      ((pub2_instate_tuition_fees_2016/2)*prop_pub2)
+  )
+```
+
+      
+      
+```{r,results='asis'}
+g1<-gg_state_plot(tuit,"Subsidy",groupvar = "name",axis_label = "Subsidy Level")
+g1
+```
+
+A few states--Vermont, New Hampshire, Pennsylvania, Michigan--- will receive in excess of $6,000 per student, while 
+several large states-- Texas, California, Florida-- will get less than half that. 
+
+Any plan that guarantees free tuition at public colleges has to grapple with two issues. First, if the 
+plan provides a blanket guarantee without requiring states to equalize their investment, it will end up
+rewarding states that have done a pretty bad job in ensuring college affordability. Second, state leaders
+will almost certainly lower their spending on higher education in order to gain more federal dollars, unless the plan requires that they spend at a certain level. The Warren plan contains what appears to be a "maintenance of effort" provision, but
+it's not clear how this would be enforced. 
+
+
+
+## Map of Subsidy Levels by State
+```{r}
+spdf <- usa_sf()
+
+## Join data and shapefile
+
+tuit_states<-left_join(spdf,tuit,by="name")
+
+```
+
+
+```{r,results='asis'}
+m1<-map_gen(v="Subsidy",geo_df = tuit_states,legend_label = "Subsidy Level")
+m1
+```
+
+The distribution of these subsidies will be to primarily Midwestern and Northeastern states. 
+
+I've [advocated](https://files.eric.ed.gov/fulltext/ED544377.pdf) [for](https://irhe.gse.upenn.edu/sites/default/files/Natl_Affordability2016.pdf) using federal funds to push states to invest more in need-based aid, using some form of a matching program. This approach rewards states that are already investing in need-based aid and incentivizes states that aren't investing in need-based aid to do more for their students. The Warren plan, and other similar plans, will reward states that have done little in the past to encourage college affordability, and will "lock in" current subsidy patterns indefinitely, meaning that the very states she excoriates for offloading costs onto students and families would get a large reward, while states that have worked hard to ensure college affordability would be penalized. 
+
+
+## Full List of States and Subsidy Levels
+
+```{r,results='asis'}
+tuit%>%select(name,Subsidy)%>%
+  rename("State"=name)%>%
+  arrange(-Subsidy)%>%
+  mutate(Subsidy=prettyNum(round(Subsidy,0),big.mark=","))%>%
+  kable()
+```
+
+R code for generating these results available here:https://github.com/wdoyle42/fed_projections
